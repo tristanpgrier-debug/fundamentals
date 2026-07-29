@@ -159,47 +159,93 @@ textarea{background:var(--card2);border:1px solid var(--line);border-radius:10px
 <nav id="nav"></nav>
 
 <script>
-/* ============================ PROGRAM ============================ */
-/* Faithful to "The Fundamentals" v5. Edit here only with intent. */
-const PROGRAM = {
-  version: "v5",
-  cycle: ["HP","HB","HL","LP","LB","LL"],
-  restMap: { heavy:180, secondary:120, iso:90 },
-  sessions: {
+/* ============================ PROGRAMS ============================ */
+/* v5  = The Fundamentals exactly as written. Kept selectable, unchanged.
+   f47 = same 20 exercises, redistributed into a 4-session Upper/Lower rotation with
+         ~20% less weekly volume and ~2.5x weekly frequency per muscle. Built for a
+         47-year-old gaining mass on 5 sessions a week.                                */
+const PROGRAMS = {};
+
+PROGRAMS.v5 = {
+  id:"v5", name:"The Fundamentals (original)", note:"Exactly as your friend wrote it. 6-session rolling cycle.",
+  cycle:["HP","HB","HL","LP","LB","LL"],
+  sessions:{
     HP:{ name:"Heavy Push", short:"Push", light:false, base:"HP", ex:[
-      {n:"Smith Incline Press",   s:4, lo:8,  hi:10, rest:180, inc:2.5, k:"bar"},
-      {n:"Smith Bench Press",     s:3, lo:5,  hi:8,  rest:180, inc:2.5, k:"bar"},
-      {n:"Smith Overhead Press",  s:4, lo:6,  hi:8,  rest:180, inc:2.5, k:"bar"},
-      {n:"DB Lateral Raise",      s:3, lo:10, hi:15, rest:90,  inc:2,   k:"db"},
-      {n:"Weighted Dips",         s:3, lo:10, hi:12, rest:120, inc:2.5, k:"bw"},
-      {n:"Chest Fly",             s:3, lo:10, hi:12, rest:90,  inc:2.5, k:"mac"},
-      {n:"Cable Lateral Raise",   s:2, lo:12, hi:15, rest:90,  inc:2.5, k:"cab"}
+      {n:"Smith Incline Press",    s:4, lo:8,  hi:10, rest:180, inc:2.5},
+      {n:"Smith Bench Press",      s:3, lo:5,  hi:8,  rest:180, inc:2.5},
+      {n:"Smith Overhead Press",   s:4, lo:6,  hi:8,  rest:180, inc:2.5},
+      {n:"DB Lateral Raise",       s:3, lo:10, hi:15, rest:90,  inc:2},
+      {n:"Weighted Dips",          s:3, lo:10, hi:12, rest:120, inc:2.5},
+      {n:"Chest Fly",              s:3, lo:10, hi:12, rest:90,  inc:2.5},
+      {n:"Cable Lateral Raise",    s:2, lo:12, hi:15, rest:90,  inc:2.5}
     ]},
     HB:{ name:"Heavy Pull", short:"Pull", light:false, base:"HB", ex:[
-      {n:"Machine Row",           s:3, lo:6,  hi:8,  rest:180, inc:2.5, k:"mac"},
-      {n:"Weighted Pull-up",      s:3, lo:6,  hi:8,  rest:180, inc:2.5, k:"bw"},
-      {n:"Cable Row",             s:3, lo:6,  hi:8,  rest:180, inc:2.5, k:"cab"},
-      {n:"Close-Grip Pulldown",   s:3, lo:6,  hi:8,  rest:120, inc:2.5, k:"cab"},
-      {n:"Shrugs",                s:3, lo:8,  hi:10, rest:120, inc:2.5, k:"db"},
-      {n:"Preacher Curl",         s:3, lo:8,  hi:12, rest:90,  inc:2.5, k:"mac"},
-      {n:"Reverse Fly",           s:3, lo:10, hi:15, rest:90,  inc:2.5, k:"mac"},
-      {n:"Cable Curl",            s:3, lo:8,  hi:12, rest:90,  inc:2.5, k:"cab"}
+      {n:"Machine Row",            s:3, lo:6,  hi:8,  rest:180, inc:2.5},
+      {n:"Weighted Pull-up",       s:3, lo:6,  hi:8,  rest:180, inc:2.5},
+      {n:"Cable Row",              s:3, lo:6,  hi:8,  rest:180, inc:2.5},
+      {n:"Close-Grip Pulldown",    s:3, lo:6,  hi:8,  rest:120, inc:2.5},
+      {n:"Shrugs",                 s:3, lo:8,  hi:10, rest:120, inc:2.5},
+      {n:"Preacher Curl",          s:3, lo:8,  hi:12, rest:90,  inc:2.5},
+      {n:"Reverse Fly",            s:3, lo:10, hi:15, rest:90,  inc:2.5},
+      {n:"Cable Curl",             s:3, lo:8,  hi:12, rest:90,  inc:2.5}
     ]},
     HL:{ name:"Heavy Legs", short:"Legs", light:false, base:"HL", ex:[
-      {n:"Leg Press",             s:4, lo:5,  hi:8,  rest:180, inc:5,   k:"mac"},
-      {n:"Smith Romanian Deadlift",s:4,lo:8,  hi:12, rest:180, inc:2.5, k:"bar"},
-      {n:"Lying Leg Curl",        s:4, lo:8,  hi:10, rest:120, inc:2.5, k:"mac"},
-      {n:"Leg Extension",         s:4, lo:8,  hi:10, rest:90,  inc:2.5, k:"mac"},
-      {n:"Standing Calf Raise",   s:4, lo:10, hi:15, rest:90,  inc:2.5, k:"mac"}
+      {n:"Leg Press",              s:4, lo:5,  hi:8,  rest:180, inc:5},
+      {n:"Smith Romanian Deadlift",s:4, lo:8,  hi:12, rest:180, inc:2.5},
+      {n:"Lying Leg Curl",         s:4, lo:8,  hi:10, rest:120, inc:2.5},
+      {n:"Leg Extension",          s:4, lo:8,  hi:10, rest:90,  inc:2.5},
+      {n:"Standing Calf Raise",    s:4, lo:10, hi:15, rest:90,  inc:2.5}
     ]}
   }
 };
-// Light days mirror the heavy session at reduced load, top of rep range.
 ["HP","HB","HL"].forEach(b=>{
-  const L = b==="HP"?"LP":b==="HB"?"LB":"LL", src = PROGRAM.sessions[b];
-  PROGRAM.sessions[L] = { name:"Light "+src.short, short:src.short+" (light)", light:true, base:b,
-    ex: src.ex.map(e=>({...e})) };
+  const L=b==="HP"?"LP":b==="HB"?"LB":"LL", src=PROGRAMS.v5.sessions[b];
+  PROGRAMS.v5.sessions[L]={ name:"Light "+src.short, short:src.short+" (light)", light:true,
+    base:b, ex:src.ex.map(e=>({...e})) };
 });
+
+PROGRAMS.f47 = {
+  id:"f47", name:"The Fundamentals 47", note:"Same 20 exercises. 4-session Upper/Lower rotation, ~20% less weekly volume, each muscle ~2.5x/week.",
+  cycle:["UA","LA","UB","LB"],
+  sessions:{
+    UA:{ name:"Upper A", short:"Upper A", light:false, base:"UA", ex:[
+      {n:"Smith Incline Press",    s:4, lo:6,  hi:8,  rest:180, inc:2.5},
+      {n:"Machine Row",            s:3, lo:8,  hi:10, rest:120, inc:2.5},
+      {n:"Smith Overhead Press",   s:3, lo:6,  hi:8,  rest:180, inc:2.5},
+      {n:"Close-Grip Pulldown",    s:3, lo:8,  hi:10, rest:120, inc:2.5},
+      {n:"DB Lateral Raise",       s:3, lo:12, hi:15, rest:90,  inc:2},
+      {n:"Chest Fly",              s:2, lo:12, hi:15, rest:90,  inc:2.5}
+    ]},
+    LA:{ name:"Lower A", short:"Lower A", light:false, base:"LA", ex:[
+      {n:"Leg Press",              s:4, lo:6,  hi:8,  rest:180, inc:5},
+      {n:"Smith Romanian Deadlift",s:3, lo:8,  hi:10, rest:180, inc:2.5},
+      {n:"Lying Leg Curl",         s:3, lo:8,  hi:10, rest:120, inc:2.5},
+      {n:"Leg Extension",          s:3, lo:10, hi:12, rest:90,  inc:2.5},
+      {n:"Standing Calf Raise",    s:4, lo:10, hi:15, rest:90,  inc:2.5}
+    ]},
+    UB:{ name:"Upper B", short:"Upper B", light:false, base:"UB", ex:[
+      {n:"Weighted Pull-up",       s:3, lo:6,  hi:8,  rest:180, inc:2.5},
+      {n:"Smith Bench Press",      s:3, lo:6,  hi:8,  rest:180, inc:2.5},
+      {n:"Cable Row",              s:3, lo:8,  hi:10, rest:120, inc:2.5},
+      {n:"Weighted Dips",          s:3, lo:8,  hi:10, rest:120, inc:2.5},
+      {n:"Cable Lateral Raise",    s:3, lo:12, hi:15, rest:90,  inc:2.5},
+      {n:"Reverse Fly",            s:2, lo:12, hi:15, rest:90,  inc:2.5},
+      {n:"Preacher Curl",          s:2, lo:10, hi:12, rest:90,  inc:2.5}
+    ]},
+    LB:{ name:"Lower B", short:"Lower B", light:false, base:"LB", ex:[
+      {n:"Smith Romanian Deadlift",s:3, lo:6,  hi:8,  rest:180, inc:2.5},
+      {n:"Leg Press",              s:3, lo:10, hi:12, rest:180, inc:5},
+      {n:"Lying Leg Curl",         s:3, lo:10, hi:12, rest:120, inc:2.5},
+      {n:"Shrugs",                 s:3, lo:8,  hi:12, rest:120, inc:2.5},
+      {n:"Standing Calf Raise",    s:3, lo:12, hi:15, rest:90,  inc:2.5},
+      {n:"Cable Curl",             s:2, lo:10, hi:12, rest:90,  inc:2.5}
+    ]}
+  }
+};
+
+function PROG(){ return PROGRAMS[S.programId] || PROGRAMS.f47; }
+function SESS(k){ return PROG().sessions[k]; }
+function setsIn(p,k){ return p.sessions[k].ex.reduce((n,e)=>n+e.s,0); }
 
 /* Pain-driven exercise modifications. The manual's own rule: "Pain changes the exercise,
    not the long-term goal." Toggled in Settings. Not medical advice. */
@@ -238,8 +284,8 @@ const KEY="fundamentals.v1";
 let MEM=null;
 const canLS=(()=>{try{localStorage.setItem("__t","1");localStorage.removeItem("__t");return true}catch(e){return false}})();
 const DEF={
-  settings:{unit:"kg", lightPct:12.5, startWeight:null, goalRate:0.2, cardioTarget:8, sound:true, mods:{golfersElbow:false}},
-  cycleIdx:0, sessions:[], weighins:[], cardio:[], rehab:[], active:null, lastSync:null
+  settings:{unit:"kg", lightPct:12.5, startWeight:null, goalRate:0.2, cardioTarget:6, sound:true, mods:{golfersElbow:false}},
+  programId:"f47", cycleIdx:0, deload:0, sessions:[], weighins:[], cardio:[], rehab:[], active:null, lastSync:null
 };
 function load(){
   try{ const raw = canLS ? localStorage.getItem(KEY) : MEM;
@@ -281,13 +327,16 @@ function cueFor(exName){
    - 8                    -> repeat the weight
    - 7                    -> hold until execution improves
    - <=6                  -> reduce and rebuild                                  */
-function lastFor(exName, baseKey){
+function lastFor(exName, sessKey){
+  let exact=null, any=null;
   for(let i=S.sessions.length-1;i>=0;i--){
-    const s=S.sessions[i]; if(s.base!==baseKey || s.light) continue;
-    const e=s.entries.find(x=>x.n===exName);
-    if(e && e.sets.some(st=>st.w!=null && st.r!=null)) return {s,e};
+    const ss=S.sessions[i]; if(ss.light) continue;
+    const e=ss.entries.find(x=>x.n===exName);
+    if(!e || !e.sets.some(st=>st.w!=null&&st.r!=null)) continue;
+    if(ss.key===sessKey){ exact={s:ss,e}; break; }
+    if(!any) any={s:ss,e};
   }
-  return null;
+  return exact ? {...exact, same:true} : (any ? {...any, same:false} : null);
 }
 /* "Own the current weight before increasing" means owning it across every working set,
    not landing one good rep. So the gate is the AVERAGE score of the sets performed at
@@ -297,17 +346,29 @@ function readLast(e){
   if(!done.length) return null;
   const topW=Math.max(...done.map(s=>s.w));
   const at=done.filter(s=>s.w===topW);
-  const bestReps=Math.max(...at.map(s=>s.r));
-  const avg=at.reduce((n,s)=>n+s.sc,0)/at.length;
-  return {w:topW, reps:bestReps, avg, gate:Math.round(avg), n:at.length};
+  return { w:topW, reps:Math.max(...at.map(s=>s.r)),
+           avg:at.reduce((n,x)=>n+x.sc,0)/at.length,
+           gate:Math.round(at.reduce((n,x)=>n+x.sc,0)/at.length), n:at.length };
 }
+const e1rm=(w,r)=>w*(1+r/30);
+const loadFor=(e1,r)=>e1/(1+r/30);
+
 function recommend(ex, sess){
-  const prev = lastFor(ex.n, sess.base);
+  const u=S.settings.unit;
+  const prev = lastFor(ex.n, sess.key);
   if(!prev) return {w:null, reps:ex.lo, why:"First time — find a weight you can own for "+ex.lo+"–"+ex.hi+". Log it honestly; every future target is built off this.", tag:"n"};
   const L = readLast(prev.e);
   if(!L) return {w:null, reps:ex.lo, why:"No scored sets last time — score every set or the engine can't progress you.", tag:"n"};
-  const u=S.settings.unit;
   const ago = Math.round((new Date(today())-new Date(prev.s.date))/864e5);
+
+  // Same exercise, different session (e.g. Leg Press 6-8 in Lower A vs 10-12 in Lower B).
+  // Convert via estimated 1RM rather than pretending the loads are comparable.
+  if(!prev.same){
+    const w=round(loadFor(e1rm(L.w,L.reps), ex.lo), ex.inc);
+    return {w, reps:ex.lo, tag:"n",
+      why:`No history for this slot. Converted from ${prev.s.name} (${L.w}${u} × ${L.reps}, ${ago}d ago) → <b>about ${w}${u}</b> for ${ex.lo}–${ex.hi}. Treat it as a starting guess and score it honestly.`};
+  }
+
   const meta = `Last (${ago}d ago): ${L.w}${u}, best ${L.reps} reps, avg ${L.avg.toFixed(1)}/10 across ${L.n} set${L.n>1?"s":""}.`;
   let w=L.w, reps=L.reps, why, tag;
   if(L.gate>=9 && L.reps>=ex.hi){ w=round(L.w+ex.inc,ex.inc); reps=ex.lo;
@@ -320,10 +381,29 @@ function recommend(ex, sess){
     why=`${meta} Technique was deteriorating → <b>hold ${L.w}${u}</b> until execution improves.`; tag="a"; }
   else { w=round(L.w*0.9,ex.inc); reps=ex.lo;
     why=`${meta} Below 7 — rebuild → <b>drop to ${w}${u}</b> and own it.`; tag="r"; }
+
   if(sess.light){ const lw=round(w*(1-S.settings.lightPct/100),ex.inc);
     why=`Light day: −${S.settings.lightPct}% off ${w}${u} → <b>${lw}${u}</b>, work the top of the range with perfect tempo.`;
     w=lw; reps=ex.hi; tag="n"; }
+  else if(S.deload>0){ const dw=round(w*0.8,ex.inc);
+    why=`Deload (${S.deload} session${S.deload>1?"s":""} left): −20% off ${w}${u} → <b>${dw}${u}</b>. Top of the range, nothing near failure. You are recovering, not training.`;
+    w=dw; reps=ex.hi; tag="n"; }
   return {w,reps,why,tag};
+}
+
+/* Deload signal: execution quality falling across recent sessions is the honest
+   readout that fatigue is outrunning recovery. Volume/soreness are not.          */
+function sessionAvg(sess){
+  const scs=sess.entries.flatMap(e=>e.sets.map(x=>x.sc)).filter(Boolean);
+  return scs.length ? scs.reduce((a,b)=>a+b,0)/scs.length : null;
+}
+function deloadDue(){
+  if(S.deload>0) return null;
+  const last=S.sessions.slice(-3).map(sessionAvg).filter(v=>v!=null);
+  if(last.length<3) return null;
+  const avg=last.reduce((a,b)=>a+b,0)/3;
+  if(avg<7.5) return {avg, reason:"Average execution across your last 3 sessions is "+avg.toFixed(1)+"/10."};
+  return null;
 }
 
 /* ============================ WEIGHT ============================ */
@@ -343,10 +423,10 @@ function trend(){
 }
 
 /* ============================ SESSION FLOW ============================ */
-function nextKey(){ return PROGRAM.cycle[S.cycleIdx % PROGRAM.cycle.length]; }
+function nextKey(){ const c=PROG().cycle; return c[S.cycleIdx % c.length]; }
 function startSession(key){
-  const def=PROGRAM.sessions[key];
-  S.active={ key, base:def.base, light:def.light, name:def.name, date:today(), started:Date.now(),
+  const def=SESS(key); if(!def) return;
+  S.active={ key, prog:S.programId, base:def.base, light:def.light, name:def.name, date:today(), started:Date.now(),
     entries:def.ex.map(e=>({n:e.n, sets:Array.from({length:e.s},()=>({w:null,r:null,sc:null}))})), notes:"" };
   save(); go("session");
 }
@@ -357,7 +437,8 @@ function finishSession(){
   if(!a.entries.length){ if(!confirm("No sets logged. Discard this session?")) return; S.active=null; save(); go("today"); return; }
   a.mins=Math.round((Date.now()-a.started)/60000); a.id=Date.now();
   S.sessions.push(a);
-  if(a.key===nextKey()) S.cycleIdx=(S.cycleIdx+1)%PROGRAM.cycle.length;
+  if(a.key===nextKey()) S.cycleIdx=(S.cycleIdx+1)%PROG().cycle.length;
+  if(S.deload>0) S.deload--;
   S.active=null; save(); toast("Session logged"); go("today");
 }
 
@@ -412,7 +493,7 @@ function drawNav(){
 function vToday(A){
   $("#ttl").textContent="Today";
   $("#sub").textContent=new Date().toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long"});
-  const key=nextKey(), def=PROGRAM.sessions[key];
+  const key=nextKey(), def=SESS(key);
   const w=S.weighins.find(x=>x.d===today());
   const a7=avg7(), tr=trend();
   const fnStart=new Date(); fnStart.setDate(fnStart.getDate()-13);
@@ -433,7 +514,7 @@ function vToday(A){
       <div style="height:12px"></div><button class="btn" onclick="go('session')">Resume</button></div>`;
   } else {
     h+=`<div class="card">
-      <div class="lbl">Next up · cycle ${S.cycleIdx%6+1}/6</div>
+      <div class="lbl">Next up · ${S.cycleIdx%PROG().cycle.length+1} of ${PROG().cycle.length}${S.deload>0?" · DELOAD":""}</div>
       <div class="big">${def.name}</div>
       <div class="muted" style="margin-top:4px">${def.ex.length} exercises · ${def.ex.reduce((n,e)=>n+e.s,0)} working sets${def.light?` · −${S.settings.lightPct}% load, top of range`:""}</div>
       <div style="height:14px"></div>
@@ -470,6 +551,15 @@ function vToday(A){
     h+=`<div class="card tight"><div class="muted">${10-S.weighins.length} more daily weigh-ins and I can read your gain rate and tell you whether to eat more.</div></div>`;
   }
 
+  const dl=deloadDue();
+  if(dl) h+=`<div class="card" style="border-color:var(--b)">
+    <div class="lbl" style="color:var(--b)">Deload recommended</div>
+    <div class="muted" style="font-size:13px">${dl.reason} Execution falling across sessions means fatigue is outrunning recovery — it shows up here before it shows up as an injury. Four sessions at −20%, top of the range, nothing near failure.</div>
+    <div style="height:12px"></div>
+    <button class="btn sec" onclick="S.deload=4;save();render();toast('Deload started')">Start 4-session deload</button></div>`;
+  if(S.deload>0) h+=`<div class="card tight" style="border-color:var(--b)">
+    <div class="lbl" style="color:var(--b);margin:0">Deload · ${S.deload} session${S.deload>1?"s":""} left</div>
+    <div class="muted" style="font-size:12.5px;margin-top:5px">Every target is −20%. Stop well short. Score these honestly anyway — they set your restart weights.</div></div>`;
   h+=`<div class="card tight"><div class="row">
     <div><div class="lbl" style="margin:0">Sessions logged</div><div style="font-size:22px;font-weight:800">${S.sessions.length}</div></div>
     <div style="text-align:right"><div class="lbl" style="margin:0">Last 7 days</div>
@@ -483,8 +573,8 @@ function vToday(A){
 }
 
 function pickSession(){
-  const opts=PROGRAM.cycle.map(k=>`<button class="btn sec" style="margin-bottom:8px;text-align:left"
-    onclick="closeMod();startSession('${k}')">${PROGRAM.sessions[k].name}</button>`).join("");
+  const opts=PROG().cycle.map(k=>`<button class="btn sec" style="margin-bottom:8px;text-align:left"
+    onclick="closeMod();startSession('${k}')">${SESS(k).name}</button>`).join("");
   modal(`<div class="lbl">Choose a session</div>${opts}<button class="btn gho" onclick="closeMod()">Cancel</button>`);
 }
 
@@ -495,7 +585,7 @@ function vSession(A){
   const totalDone=a.entries.reduce((n,e)=>n+e.sets.filter(s=>s.w!=null&&s.r!=null).length,0);
   const totalSets=a.entries.reduce((n,e)=>n+e.sets.length,0);
   $("#sub").textContent=`${totalDone}/${totalSets} sets · ${Math.round((Date.now()-a.started)/60000)} min`;
-  const def=PROGRAM.sessions[a.key];
+  const def=SESS(a.key);
   let h="";
   def.ex.forEach((ex,ei)=>{
     const ent=a.entries[ei], rec=recommend(ex,a);
@@ -541,7 +631,7 @@ function setVal(ei,si,f,v){
 }
 function doneSet(ei,si,rest){
   const s=S.active.entries[ei].sets[si];
-  const ex=PROGRAM.sessions[S.active.key].ex[ei];
+  const ex=SESS(S.active.key).ex[ei];
   const rec=recommend(ex,S.active);
   // Carry across from the previous set of this exercise, then from the recommendation.
   const prevSet=si>0?S.active.entries[ei].sets[si-1]:null;
@@ -705,10 +795,23 @@ function vSettings(A){
     <div class="row"><span class="muted">Rest timer sound</span>
       <button class="btn sm sec" onclick="S.settings.sound=!S.settings.sound;save();render()">${S.settings.sound?"On":"Off"}</button></div>
   </div>
+  <div class="card"><div class="lbl">Program</div>
+    ${Object.values(PROGRAMS).map(pg=>`<button class="btn sec" style="text-align:left;margin-bottom:8px;${pg.id===S.programId?"border-color:var(--accent)":""}"
+      onclick="switchProgram('${pg.id}')">
+      <div style="font-weight:750;${pg.id===S.programId?"color:var(--accent)":""}">${pg.name}${pg.id===S.programId?" ✓":""}</div>
+      <div class="tiny" style="margin-top:3px">${pg.note}</div>
+      <div class="tiny" style="margin-top:3px">${pg.cycle.length} sessions · ${pg.cycle.reduce((n,k)=>n+setsIn(pg,k),0)} sets per cycle</div></button>`).join("")}
+    <div class="tiny">Your logged history carries across. Where an exercise has no history in a new slot, the app converts your last effort via estimated 1RM and flags it as a guess.</div>
+  </div>
   <div class="card"><div class="lbl">Cycle position</div>
-    <div class="muted" style="font-size:13px;margin-bottom:10px">Next: <b style="color:var(--txt)">${PROGRAM.sessions[nextKey()].name}</b></div>
-    <div class="g3">${PROGRAM.cycle.map((k,i)=>`<button class="btn sm sec" style="width:100%;font-size:12px;${i===S.cycleIdx?"border-color:var(--accent);color:var(--accent)":""}"
-      onclick="S.cycleIdx=${i};save();render()">${PROGRAM.sessions[k].short}${PROGRAM.sessions[k].light?"":""}</button>`).join("")}</div>
+    <div class="muted" style="font-size:13px;margin-bottom:10px">Next: <b style="color:var(--txt)">${SESS(nextKey()).name}</b></div>
+    <div class="g3">${PROG().cycle.map((k,i)=>`<button class="btn sm sec" style="width:100%;font-size:12px;${i===S.cycleIdx?"border-color:var(--accent);color:var(--accent)":""}"
+      onclick="S.cycleIdx=${i};save();render()">${SESS(k).short}</button>`).join("")}</div>
+    <hr>
+    <div class="row"><div><b style="font-size:14px">Deload</b>
+      <div class="tiny">−20% load, top of range, nothing near failure.</div></div>
+      <button class="btn sm ${S.deload>0?"":"sec"}" style="${S.deload>0?"background:var(--b);color:#04121f":""}"
+        onclick="S.deload=S.deload>0?0:4;save();render()">${S.deload>0?S.deload+" left":"Start 4"}</button></div>
   </div>
   <div class="card"><div class="lbl">Niggles</div>
     <div class="muted" style="font-size:13px;margin-bottom:12px">Turning one on adds exercise-specific adjustments inside every session and a rehab block on the Body tab. Pain changes the exercise, not the goal.</div>
@@ -734,8 +837,13 @@ function vSettings(A){
 }
 function syncPayload(){
   return JSON.stringify({app:"The Fundamentals",exported:new Date().toISOString(),
-    settings:S.settings, cycleIdx:S.cycleIdx, sessions:S.sessions,
+    settings:S.settings, programId:S.programId, cycleIdx:S.cycleIdx, deload:S.deload, sessions:S.sessions,
     weighins:S.weighins, cardio:S.cardio, rehab:S.rehab||[]},null,1);
+}
+function switchProgram(id){
+  if(id===S.programId) return;
+  if(S.active && !confirm("Finish or discard the session in progress first. Switch anyway and discard it?")) return;
+  S.active=null; S.programId=id; S.cycleIdx=0; save(); toast(PROGRAMS[id].name); go("today");
 }
 function copySync(){
   const t=syncPayload();
@@ -758,7 +866,7 @@ function downloadBackup(){
 function doImport(){
   try{ const o=JSON.parse($("#imp").value);
     if(!o.sessions) throw 0;
-    S={...DEF,...S,settings:{...S.settings,...(o.settings||{})},cycleIdx:o.cycleIdx??0,
+    S={...DEF,...S,settings:{...S.settings,...(o.settings||{})},programId:o.programId||"f47",cycleIdx:o.cycleIdx??0,deload:o.deload??0,
        sessions:o.sessions||[],weighins:o.weighins||[],cardio:o.cardio||[],rehab:o.rehab||[]};
     save();toast("Restored");go("today");
   }catch(e){ toast("That isn't a valid backup") }
