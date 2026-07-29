@@ -285,7 +285,7 @@ let MEM=null;
 const canLS=(()=>{try{localStorage.setItem("__t","1");localStorage.removeItem("__t");return true}catch(e){return false}})();
 const DEF={
   settings:{unit:"kg", lightPct:12.5, startWeight:null, goalRate:0.2, cardioTarget:6, sound:true, mods:{golfersElbow:false}},
-  programId:"f47", cycleIdx:0, deload:0, sessions:[], weighins:[], cardio:[], rehab:[], active:null, lastSync:null
+  programId:"f47", cycleIdx:0, deload:0, sessions:[], weighins:[], cardio:[], rehab:[], recovery:[], active:null, lastSync:null
 };
 function load(){
   try{ const raw = canLS ? localStorage.getItem(KEY) : MEM;
@@ -391,6 +391,71 @@ function recommend(ex, sess){
   return {w,reps,why,tag};
 }
 
+/* ---------- RECOVERY (Hume Band via Apple Health) ----------
+   Sleep is the only band metric treated as decision-relevant. RHR and HRV are stored and
+   displayed but never trigger anything: consumer HRV is day-to-day noisy and the Progression
+   Score already measures recovery directly, from the thing we actually care about.          */
+function recAvg(field, days=7){
+  const cut=Date.now()-days*864e5;
+  const v=(S.recovery||[]).filter(r=>r[field]!=null && new Date(r.d).getTime()>=cut).map(r=>r[field]);
+  return v.length ? v.reduce((a,b)=>a+b,0)/v.length : null;
+}
+function upsertRec(d, patch){
+  S.recovery=S.recovery||[];
+  const i=S.recovery.findIndex(r=>r.d===d);
+  if(i>=0) S.recovery[i]={...S.recovery[i],...patch}; else S.recovery.push({d,...patch});
+}
+const dOnly=x=>{ if(!x) return null;
+  const m=String(x).match(/(\d{4})-(\d{2})-(\d{2})/); return m?m[0]:null; };
+
+/* Accepts: Health Auto Export JSON, a plain {date,sleep,rhr,hrv} array, or CSV with headers. */
+function parseRecovery(raw){
+  const txt=String(raw).trim(); let n=0;
+  const put=(d,f,v)=>{ if(d==null||v==null||isNaN(v)) return; upsertRec(d,{[f]:+(+v).toFixed(2)}); n++; };
+  if(txt.startsWith("{")||txt.startsWith("[")){
+    let o; try{ o=JSON.parse(txt) }catch(e){ return {n:0,err:"That isn't valid JSON."} }
+    const metrics = o?.data?.metrics || o?.metrics || (Array.isArray(o)?null:null);
+    if(metrics && Array.isArray(metrics)){
+      metrics.forEach(m=>{
+        const name=(m.name||"").toLowerCase();
+        (m.data||[]).forEach(row=>{
+          const d=dOnly(row.date||row.startDate); if(!d) return;
+          if(name.includes("sleep")){
+            const staged = (row.deep||0)+(row.core||0)+(row.rem||0);
+            const hrs = row.asleep ?? row.totalSleep ?? row.qty ?? row.value ?? (staged>0?staged:null);
+            put(d,"sleep",hrs);
+          } else if(name.includes("resting") && name.includes("heart")) put(d,"rhr",row.qty??row.Avg??row.value);
+          else if(name.includes("variability")) put(d,"hrv",row.qty??row.Avg??row.value);
+        });
+      });
+      return {n};
+    }
+    const arr = Array.isArray(o) ? o : (o.recovery||o.days||[]);
+    if(Array.isArray(arr)){
+      arr.forEach(r=>{ const d=dOnly(r.d||r.date); if(!d) return;
+        put(d,"sleep",r.sleep??r.sleepHours??r.asleep);
+        put(d,"rhr",r.rhr??r.restingHeartRate);
+        put(d,"hrv",r.hrv); });
+      return {n};
+    }
+    return {n:0,err:"Recognised JSON but found no sleep, resting heart rate or HRV in it."};
+  }
+  // CSV
+  const lines=txt.split(/\r?\n/).filter(l=>l.trim());
+  if(lines.length<2) return {n:0,err:"Couldn't read that as CSV or JSON."};
+  const head=lines[0].split(/[,;\t]/).map(h=>h.trim().toLowerCase());
+  const di=head.findIndex(h=>h.includes("date")||h==="d");
+  const si=head.findIndex(h=>h.includes("sleep")||h.includes("asleep"));
+  const ri=head.findIndex(h=>h.includes("resting")||h==="rhr");
+  const vi=head.findIndex(h=>h.includes("variability")||h==="hrv");
+  if(di<0) return {n:0,err:"No date column found in that CSV."};
+  lines.slice(1).forEach(l=>{ const c=l.split(/[,;\t]/); const d=dOnly(c[di]); if(!d) return;
+    if(si>=0) put(d,"sleep",parseFloat(c[si]));
+    if(ri>=0) put(d,"rhr",parseFloat(c[ri]));
+    if(vi>=0) put(d,"hrv",parseFloat(c[vi])); });
+  return {n};
+}
+
 /* Deload signal: execution quality falling across recent sessions is the honest
    readout that fatigue is outrunning recovery. Volume/soreness are not.          */
 function sessionAvg(sess){
@@ -402,8 +467,13 @@ function deloadDue(){
   const last=S.sessions.slice(-3).map(sessionAvg).filter(v=>v!=null);
   if(last.length<3) return null;
   const avg=last.reduce((a,b)=>a+b,0)/3;
-  if(avg<7.5) return {avg, reason:"Average execution across your last 3 sessions is "+avg.toFixed(1)+"/10."};
-  return null;
+  if(avg>=7.5) return null;
+  let reason="Average execution across your last 3 sessions is "+avg.toFixed(1)+"/10.";
+  const sl=recAvg("sleep");
+  if(sl!=null) reason += sl<7
+    ? " You're averaging "+sl.toFixed(1)+" h sleep — that's the likeliest cause, and it's fixable without a deload. Try a week of 7.5 h first."
+    : " Sleep is fine at "+sl.toFixed(1)+" h, so this is training fatigue, not recovery debt.";
+  return {avg, reason, sleep:sl};
 }
 
 /* ============================ WEIGHT ============================ */
@@ -683,6 +753,30 @@ function vBody(A){
     <div class="muted">40 min cross trainer or incline treadmill</div></div>
     <button class="btn sm sec" onclick="askCardio()">Log</button></div>
     <div class="dots">${Array.from({length:Math.max(S.settings.cardioTarget,cardioN)},(_,i)=>`<div class="dot ${i<cardioN?"on":""}"></div>`).join("")}</div></div>`;
+  if((S.recovery||[]).length){
+    const sl=recAvg("sleep"), rh=recAvg("rhr"), hv=recAvg("hrv");
+    const sl30=recAvg("sleep",30), rh30=recAvg("rhr",30), hv30=recAvg("hrv",30);
+    const arrow=(a,b,lowerBetter)=>{ if(a==null||b==null) return "";
+      const d=a-b; if(Math.abs(d)<0.01) return "";
+      const good=lowerBetter?d<0:d>0;
+      return `<span class="pill ${good?"g":"a"}" style="margin-left:6px">${d>0?"+":""}${d.toFixed(1)}</span>`; };
+    const sleepCol = sl==null?"var(--dim)":sl>=7.5?"var(--g)":sl>=7?"var(--a)":"var(--r)";
+    h+=`<div class="card"><div class="lbl">Recovery · Hume Band · 7-day average</div>
+      <div class="row" style="align-items:flex-end">
+        <div><div class="big" style="color:${sleepCol}">${sl==null?"—":sl.toFixed(1)}<span style="font-size:14px;color:var(--dim)">h sleep</span>${arrow(sl,sl30,false)}</div></div>
+      </div>
+      <div class="g2" style="margin-top:12px">
+        <div><div class="tiny">Resting HR</div><div style="font-size:20px;font-weight:800">${rh==null?"—":Math.round(rh)}${arrow(rh,rh30,true)}</div></div>
+        <div><div class="tiny">HRV</div><div style="font-size:20px;font-weight:800">${hv==null?"—":Math.round(hv)}${arrow(hv,hv30,false)}</div></div>
+      </div>
+      <div class="muted" style="font-size:12.5px;margin-top:12px">${
+        sl==null ? "No sleep data yet."
+        : sl<7 ? "Under 7 h on a bulk at 47 is the binding constraint. Fix this before changing anything about the training."
+        : sl<7.5 ? "Adequate, not generous. If scores start slipping, this is the first place to look."
+        : "Sleep is supporting the training. If execution drops, it isn't this."}</div>
+      <div class="tiny" style="margin-top:8px">Pills compare the last 7 days against the last 30. Resting HR and HRV are shown for context only — they never change your targets.</div>
+    </div>`;
+  }
   activeMods().forEach(k=>{
     const N=NIGGLES[k], doneToday=(S.rehab||[]).includes(today());
     const last7=(S.rehab||[]).filter(d=>(new Date()-new Date(d))<7*864e5).length;
@@ -826,6 +920,14 @@ function vSettings(A){
     ${[10,9,8,7,6].map(v=>`<div class="hrow"><b style="color:var(--${SCALE[v].c});min-width:30px">${v}</b>
       <span class="muted" style="font-size:12.5px;text-align:right;flex:1">${SCALE[v].d}</span></div>`).join("")}
   </div>
+  <div class="card"><div class="lbl">Recovery data</div>
+    <div class="muted" style="font-size:13px">${(S.recovery||[]).length
+      ? (S.recovery||[]).length+" days loaded. Paste a newer export to merge — matching dates are overwritten, nothing is lost."
+      : "Paste a Health Auto Export JSON (or any CSV with date / sleep / resting HR / HRV columns)."}</div>
+    <div style="height:10px"></div>
+    <textarea id="recIn" placeholder='Paste Health Auto Export JSON or CSV here'></textarea>
+    <div style="height:8px"></div><button class="btn sec" onclick="doRecImport()">Import recovery data</button>
+  </div>
   <div class="card"><div class="lbl">Restore</div>
     <textarea id="imp" placeholder="Paste a backup JSON here to restore"></textarea>
     <div style="height:8px"></div><button class="btn sec" onclick="doImport()">Restore from JSON</button>
@@ -838,7 +940,7 @@ function vSettings(A){
 function syncPayload(){
   return JSON.stringify({app:"The Fundamentals",exported:new Date().toISOString(),
     settings:S.settings, programId:S.programId, cycleIdx:S.cycleIdx, deload:S.deload, sessions:S.sessions,
-    weighins:S.weighins, cardio:S.cardio, rehab:S.rehab||[]},null,1);
+    weighins:S.weighins, cardio:S.cardio, rehab:S.rehab||[], recovery:S.recovery||[]},null,1);
 }
 function switchProgram(id){
   if(id===S.programId) return;
@@ -863,11 +965,18 @@ function downloadBackup(){
   a.download="fundamentals-"+today()+".json";a.click();
   S.lastSync=today();save();toast("Backup downloaded");
 }
+function doRecImport(){
+  const t=$("#recIn").value.trim(); if(!t){toast("Nothing pasted");return}
+  const r=parseRecovery(t);
+  if(r.err){ toast(r.err.slice(0,40)); return }
+  if(!r.n){ toast("No usable rows found"); return }
+  save(); toast(r.n+" values imported"); go("body");
+}
 function doImport(){
   try{ const o=JSON.parse($("#imp").value);
     if(!o.sessions) throw 0;
     S={...DEF,...S,settings:{...S.settings,...(o.settings||{})},programId:o.programId||"f47",cycleIdx:o.cycleIdx??0,deload:o.deload??0,
-       sessions:o.sessions||[],weighins:o.weighins||[],cardio:o.cardio||[],rehab:o.rehab||[]};
+       sessions:o.sessions||[],weighins:o.weighins||[],cardio:o.cardio||[],rehab:o.rehab||[],recovery:o.recovery||[]};
     save();toast("Restored");go("today");
   }catch(e){ toast("That isn't a valid backup") }
 }
