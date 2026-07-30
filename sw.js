@@ -1,4 +1,4 @@
-const C = "fundamentals-v3";
+const C = "fundamentals-v4";
 const ASSETS = ["./", "./index.html", "./manifest.json"];
 
 self.addEventListener("install", e => {

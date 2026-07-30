@@ -284,12 +284,18 @@ const KEY="fundamentals.v1";
 let MEM=null;
 const canLS=(()=>{try{localStorage.setItem("__t","1");localStorage.removeItem("__t");return true}catch(e){return false}})();
 const DEF={
-  settings:{unit:"kg", lightPct:12.5, startWeight:null, goalRate:0.2, cardioTarget:6, sound:true, mods:{golfersElbow:false}},
+  settings:{unit:"kg", autoAdv:true, lightPct:12.5, startWeight:null, goalRate:0.2, cardioTarget:6, sound:true, mods:{golfersElbow:false}},
   programId:"f47", cycleIdx:0, deload:0, sessions:[], weighins:[], cardio:[], rehab:[], recovery:[], active:null, lastSync:null
 };
 function load(){
   try{ const raw = canLS ? localStorage.getItem(KEY) : MEM;
-       return raw ? {...DEF,...JSON.parse(raw)} : structuredClone(DEF);
+       if(!raw) return structuredClone(DEF);
+       const o=JSON.parse(raw);
+       // Shallow-merging the top level would replace `settings` wholesale, leaving any setting
+       // added in a later version undefined for existing users. Merge settings and mods too.
+       return {...DEF, ...o,
+         settings:{...DEF.settings, ...(o.settings||{}),
+           mods:{...DEF.settings.mods, ...((o.settings||{}).mods||{})}}};
   }catch(e){ return structuredClone(DEF) }
 }
 let S = load();
@@ -671,10 +677,12 @@ function vSession(A){
       const ok=st.w!=null&&st.r!=null;
       h+=`<div class="set">
         <div class="setn">${si+1}</div>
-        <input type="number" inputmode="decimal" step="0.5" class="${st.w!=null?"filled":""}"
-          placeholder="${rec.w!=null?rec.w:"—"}" value="${st.w??""}" onchange="setVal(${ei},${si},'w',this.value)">
-        <input type="number" inputmode="numeric" class="${st.r!=null?"filled":""}"
-          placeholder="${rec.reps}" value="${st.r??""}" onchange="setVal(${ei},${si},'r',this.value)">
+        <input id="f-${ei}-${si}-w" type="number" inputmode="decimal" step="0.5" class="${st.w!=null?"filled":""}"
+          placeholder="${rec.w!=null?rec.w:"—"}" value="${st.w??""}"
+          oninput="onIn(this,${ei},${si},'w')" onblur="onBlur(${ei},${si},'w')">
+        <input id="f-${ei}-${si}-r" type="number" inputmode="numeric" class="${st.r!=null?"filled":""}"
+          placeholder="${rec.reps}" value="${st.r??""}"
+          oninput="onIn(this,${ei},${si},'r')" onblur="onBlur(${ei},${si},'r')">
         <button class="scbtn" style="${st.sc?`color:var(--${scoreCls(st.sc)});border-color:var(--${scoreCls(st.sc)})`:""}"
           onclick="askScore(${ei},${si})">${st.sc??"–"}</button>
         <button class="tick ${ok?"on":""}" onclick="doneSet(${ei},${si},${ex.rest})">
@@ -693,6 +701,58 @@ function vSession(A){
       <button class="btn gho" onclick="if(confirm('Discard this session?')){S.active=null;save();stopRest();go('today')}">Discard</button>
       <div style="height:20px"></div>`;
   A.innerHTML=h;
+}
+/* ---------- SET ENTRY: weight -> reps -> score, without re-rendering mid-typing ----------
+   The old setVal() re-rendered the whole session view on every commit, which destroyed input
+   focus and forced a re-tap. Typing now only writes to state; the view rebuilds at the points
+   where the DOM actually has to change (score chosen, tick pressed, set completed).          */
+let advT=null;
+function clearAdv(){ if(advT){clearTimeout(advT); advT=null;} }
+function fld(ei,si,f){ return document.getElementById(`f-${ei}-${si}-${f}`); }
+
+function onIn(el,ei,si,f){
+  clearAdv();
+  const raw=el.value.trim();
+  const s=S.active.entries[ei].sets[si];
+  s[f] = raw==="" ? null : parseFloat(raw);
+  if(isNaN(s[f])) s[f]=null;
+  el.classList.toggle("filled", raw!=="");
+  save();
+  if(!S.settings.autoAdv || raw==="" || s[f]==null) return;
+  if(/[.,]$/.test(raw)) return;                  // mid-decimal ("62.") — he isn't finished
+  // A decimal already typed means the number is almost certainly complete (62.5), so move fast.
+  // A bare integer might still be growing (6 -> 60 -> 100), so wait longer. Reps can be 2 digits.
+  const delay = f==="w" ? (/[.,]\d/.test(raw) ? 400 : 1100) : 900;
+  advT=setTimeout(()=>advance(ei,si,f), delay);
+}
+function onBlur(ei,si,f){ clearAdv(); }
+
+function advance(ei,si,f){
+  advT=null;
+  const s=S.active.entries[ei].sets[si];
+  if(f==="w"){
+    const n=fld(ei,si,"r");
+    if(n && s.r==null){ n.focus(); n.select&&n.select(); }
+    else if(n && s.sc==null){ /* reps already there — go straight to score */
+      n.blur(); askScore(ei,si,SESS(S.active.key).ex[ei].rest); }
+    return;
+  }
+  if(s.w==null||s.r==null||s.sc!=null) return;
+  const a=document.activeElement; if(a&&a.blur) a.blur();
+  askScore(ei,si,SESS(S.active.key).ex[ei].rest);
+}
+
+/* Where to land after a set is scored: next set of this exercise, else first set of the next. */
+function focusNext(ei,si){
+  if(!S.settings.autoAdv) return;
+  const a=S.active; if(!a) return;
+  let tEi=ei, tSi=si+1;
+  if(tSi>=a.entries[ei].sets.length){ tEi=ei+1; tSi=0; }
+  if(tEi>=a.entries.length) return;               // session finished — don't yank the keyboard up
+  const n=fld(tEi,tSi,"w");
+  if(!n) return;
+  n.scrollIntoView({block:"center",behavior:"smooth"});
+  setTimeout(()=>{ n.focus(); n.select&&n.select(); }, 260);
 }
 function setVal(ei,si,f,v){
   const s=S.active.entries[ei].sets[si];
@@ -725,9 +785,17 @@ function askScore(ei,si,restAfter){
     <button class="btn gho" onclick="closeMod()">Cancel</button>`);
 }
 function setScore(ei,si,v,restAfter){
-  S.active.entries[ei].sets[si].sc=v; save(); closeMod();
+  const s=S.active.entries[ei].sets[si];
+  s.sc=v;
+  // Scoring a set implies it happened: fill anything still blank from the recommendation.
+  const ex=SESS(S.active.key).ex[ei], rec=recommend(ex,S.active);
+  const prev=si>0?S.active.entries[ei].sets[si-1]:null;
+  if(s.w==null) s.w=(prev&&prev.w!=null)?prev.w:rec.w;
+  if(s.r==null) s.r=rec.reps;
+  save(); closeMod();
   if(restAfter) startRest(restAfter);
   vSession($("#app"));
+  focusNext(ei,si);
 }
 
 /* ---------- BODY ---------- */
@@ -874,6 +942,14 @@ function vSettings(A){
     <div style="height:8px"></div>
     <button class="btn sec" onclick="downloadBackup()">Download backup file</button>
     <div class="tiny" style="margin-top:9px">${S.lastSync?"Last copied "+dstr(S.lastSync):"Never synced — do this every Sunday."}</div>
+  </div>
+  <div class="card"><div class="lbl">Logging</div>
+    <label style="display:flex;gap:12px;align-items:flex-start;cursor:pointer">
+      <input type="checkbox" style="width:20px;height:20px;margin-top:2px;accent-color:var(--acc);flex:none"
+        ${S.settings.autoAdv?"checked":""} onchange="S.settings.autoAdv=this.checked;save()">
+      <span><span style="font-weight:600">Auto-advance fields</span>
+      <span class="tiny" style="display:block;margin-top:3px">Weight jumps to reps, reps opens the score card. Turn this off if it moves on before you've finished typing.</span></span>
+    </label>
   </div>
   <div class="card"><div class="lbl">Targets</div>
     <div class="fld"><label>Bodyweight gain target (${S.settings.unit}/week)</label>
