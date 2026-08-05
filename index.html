@@ -306,7 +306,34 @@ function load(){
   }catch(e){ return structuredClone(DEF) }
 }
 let S = load();
-function save(){ const j=JSON.stringify(S); if(canLS){try{localStorage.setItem(KEY,j)}catch(e){MEM=j}} else MEM=j; }
+try{ reconcileActive() }catch(e){ console.warn("reconcile failed",e) }
+function isEmptyState(o){
+  return !o || (!(o.sessions||[]).length && !(o.weighins||[]).length && !(o.cardio||[]).length && !o.active);
+}
+/* A blank in-memory state must never be written over a populated saved one. The backgrounding
+   handler fires save() whenever the app is hidden, so a single failed load followed by an
+   app switch would otherwise erase everything. force=true is for the deliberate wipe. */
+function save(force){
+  const j=JSON.stringify(S);
+  if(!canLS){ MEM=j; return }
+  try{
+    if(!force && isEmptyState(S)){
+      const cur=localStorage.getItem(KEY);
+      if(cur){ try{ if(!isEmptyState(JSON.parse(cur))){ console.warn("save() refused: would blank real data"); return } }catch(e){} }
+    }
+    localStorage.setItem(KEY,j);
+    backup();
+  }catch(e){ MEM=j }
+}
+/* One rolling snapshot per day, so a bad update is always recoverable. */
+function backup(){
+  try{
+    if(isEmptyState(S)) return;
+    const b=JSON.parse(localStorage.getItem(KEY+".bak")||"null");
+    if(b && b.d===today()) return;
+    localStorage.setItem(KEY+".bak", JSON.stringify({d:today(), s:S}));
+  }catch(e){}
+}
 
 /* ============================ UTIL ============================ */
 const $=s=>document.querySelector(s);
@@ -514,6 +541,37 @@ function trend(){
 
 /* ============================ SESSION FLOW ============================ */
 function nextKey(){ const c=PROG().cycle; return c[S.cycleIdx % c.length]; }
+/* An in-progress session stores a flat list of entries that vSession pairs to the program
+   definition BY INDEX. Change the program - add an exercise, reorder one - and that pairing
+   silently breaks: def.ex[5] exists, a.entries[5] does not, and the whole view throws on
+   render, which looks to the user like the app is dead. Adding Farmer's Carry to Lower A and
+   Lower B on 5 Aug did exactly that to any session already open.
+   Re-pair by name on every load. Nothing logged is ever discarded. */
+function reconcileActive(){
+  const a=S.active; if(!a) return false;
+  const def=SESS(a.key);
+  if(!def){ S.active=null; return true; }
+  const old = Array.isArray(a.entries) ? a.entries : [];
+  const byName = new Map(old.filter(e=>e&&e.n).map(e=>[e.n,e]));
+  const blank = n => ({w:null,r:null,sc:null});
+  let changed = false;
+  a.entries = def.ex.map(ex=>{
+    const prev = byName.get(ex.n);
+    if(!prev){ changed=true; return {n:ex.n, sets:Array.from({length:ex.s}, blank)}; }
+    byName.delete(ex.n);
+    const sets = Array.isArray(prev.sets) ? prev.sets.slice() : [];
+    while(sets.length < ex.s){ sets.push(blank()); changed=true; }
+    return {n:ex.n, sets};
+  });
+  // Anything logged against an exercise that has since left the program is kept, not binned.
+  byName.forEach(orphan=>{
+    changed = true;
+    if((orphan.sets||[]).some(st=>st && st.w!=null && st.r!=null)) a.entries.push(orphan);
+  });
+  if(!a.started) a.started = Date.now();
+  return changed;
+}
+
 function startSession(key){
   const def=SESS(key); if(!def) return;
   S.active={ key, prog:S.programId, base:def.base, light:def.light, name:def.name, date:today(), started:Date.now(),
@@ -559,6 +617,10 @@ let view="today", scModal=null;
 function go(v){ view=v; render(); window.scrollTo(0,0); }
 
 function render(){
+  try{ renderView(); }
+  catch(e){ crashScreen(e); }
+}
+function renderView(){
   const A=$("#app");
   $("#hact").innerHTML="";
   if(view==="today") vToday(A);
@@ -567,6 +629,28 @@ function render(){
   else if(view==="history") vHistory(A);
   else if(view==="settings") vSettings(A);
   drawNav();
+}
+/* If a view throws, show a way out and a way to rescue the data - never a blank screen. */
+function crashScreen(e){
+  console.error(e);
+  const A=$("#app"); if(!A) return;
+  const n=(S.sessions||[]).length, w=(S.weighins||[]).length;
+  A.innerHTML=`<div class="card" style="border-color:#5E2733">
+    <div class="lbl" style="color:var(--r)">Something broke</div>
+    <div class="muted" style="font-size:13.5px;line-height:1.6">
+      A screen failed to draw. <b>Your data is still here</b> — ${n} logged session${n===1?"":"s"},
+      ${w} weigh-in${w===1?"":"s"}. Copy it out before doing anything else.
+    </div>
+    <div style="height:13px"></div>
+    <button class="btn" onclick="copyLog()">Copy my data</button>
+    <div style="height:8px"></div>
+    <button class="btn sec" onclick="downloadBackup()">Download backup file</button>
+    <div style="height:8px"></div>
+    <button class="btn gho" onclick="try{reconcileActive();save();}catch(x){};view='today';render()">Back to Today</button>
+    <div style="height:8px"></div>
+    <button class="btn gho" onclick="if(confirm('Abandon the in-progress session? Logged sessions are untouched.')){S.active=null;save();view='today';render()}">Abandon in-progress session</button>
+    <div class="tiny" style="margin-top:12px">${esc(String(e&&e.message||e))}</div>
+  </div>`;
 }
 
 function drawNav(){
@@ -678,7 +762,14 @@ function vSession(A){
   const def=SESS(a.key);
   let h="";
   def.ex.forEach((ex,ei)=>{
-    const ent=a.entries[ei], rec=recommend(ex,a);
+    // Belt and braces: reconcileActive() should have guaranteed this, but a missing entry
+    // must degrade to an empty one rather than take the whole screen down.
+    let ent=a.entries[ei];
+    if(!ent || !Array.isArray(ent.sets)){
+      ent={n:ex.n, sets:Array.from({length:ex.s},()=>({w:null,r:null,sc:null}))};
+      a.entries[ei]=ent;
+    }
+    const rec=recommend(ex,a);
     const done=ent.sets.every(s=>s.w!=null&&s.r!=null);
     h+=`<div class="ex ${done?"done":""}">
       <div class="exh"><div><div class="exn">${esc(ex.n)}</div>
@@ -1010,6 +1101,13 @@ function vSettings(A){
     ${[10,9,8,7,6].map(v=>`<div class="hrow"><b style="color:var(--${SCALE[v].c});min-width:30px">${v}</b>
       <span class="muted" style="font-size:12.5px;text-align:right;flex:1">${SCALE[v].d}</span></div>`).join("")}
   </div>
+  <div class="card"><div class="lbl">Automatic backup</div>
+    <div class="muted" style="font-size:13px">${(()=>{try{const b=JSON.parse(localStorage.getItem(KEY+".bak")||"null");
+      return b?`Snapshot from ${b.d} — ${(b.s.sessions||[]).length} sessions, ${(b.s.weighins||[]).length} weigh-ins.`
+              :"No snapshot yet. One is taken automatically the first time you save each day.";}catch(e){return "No snapshot yet."}})()}</div>
+    <div style="height:10px"></div>
+    <button class="btn sec" onclick="restoreBackup()">Restore last snapshot</button>
+  </div>
   <div class="card"><div class="lbl">Recovery data</div>
     <div class="muted" style="font-size:13px">${(S.recovery||[]).length
       ? (S.recovery||[]).length+" days loaded. Paste a newer export to merge — matching dates are overwritten, nothing is lost."
@@ -1021,7 +1119,7 @@ function vSettings(A){
   <div class="card"><div class="lbl">Restore</div>
     <textarea id="imp" placeholder="Paste a backup JSON here to restore"></textarea>
     <div style="height:8px"></div><button class="btn sec" onclick="doImport()">Restore from JSON</button>
-    <hr><button class="btn danger" onclick="if(confirm('Erase ALL logged data? This cannot be undone.')){S=structuredClone(DEF);save();toast('Wiped');go('today')}">Erase all data</button>
+    <hr><button class="btn danger" onclick="if(confirm('Erase ALL logged data? This cannot be undone.')){S=structuredClone(DEF);save(true);toast('Wiped');go('today')}">Erase all data</button>
     ${canLS?"":`<div class="tiny" style="margin-top:10px;color:var(--r)">Storage is unavailable in this preview — data will not persist. Install the hosted version to your home screen.</div>`}
   </div>
   <div style="height:12px"></div>
@@ -1054,6 +1152,15 @@ function downloadBackup(){
   const a=document.createElement("a");a.href=URL.createObjectURL(b);
   a.download="fundamentals-"+today()+".json";a.click();
   S.lastSync=today();save();toast("Backup downloaded");
+}
+function restoreBackup(){
+  try{
+    const b=JSON.parse(localStorage.getItem(KEY+".bak")||"null");
+    if(!b||!b.s){ toast("No snapshot saved"); return }
+    if(!confirm(`Restore the snapshot from ${b.d}? Anything logged since then is replaced.`)) return;
+    S={...structuredClone(DEF), ...b.s};
+    reconcileActive(); save(true); toast("Restored"); go("today");
+  }catch(e){ toast("Restore failed") }
 }
 function doRecImport(){
   const t=$("#recIn").value.trim(); if(!t){toast("Nothing pasted");return}
