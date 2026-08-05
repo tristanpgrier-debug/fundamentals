@@ -214,14 +214,15 @@ PROGRAMS.f47 = {
       {n:"Smith Overhead Press",   s:3, lo:6,  hi:8,  rest:180, inc:2.5},
       {n:"Close-Grip Pulldown",    s:3, lo:8,  hi:10, rest:120, inc:2.5},
       {n:"DB Lateral Raise",       s:3, lo:12, hi:15, rest:90,  inc:2},
-      {n:"Chest Fly",              s:2, lo:12, hi:15, rest:90,  inc:2.5}
+      {n:"Incline DB Fly",         s:2, lo:10, hi:12, rest:90,  inc:2}
     ]},
     LA:{ name:"Lower A", short:"Lower A", light:false, base:"LA", ex:[
       {n:"Leg Press",              s:4, lo:6,  hi:8,  rest:180, inc:5},
       {n:"Smith Romanian Deadlift",s:3, lo:8,  hi:10, rest:180, inc:2.5},
       {n:"Lying Leg Curl",         s:3, lo:8,  hi:10, rest:120, inc:2.5},
       {n:"Leg Extension",          s:3, lo:10, hi:12, rest:90,  inc:2.5},
-      {n:"Standing Calf Raise",    s:4, lo:10, hi:15, rest:90,  inc:2.5}
+      {n:"Standing Calf Raise",    s:4, lo:10, hi:15, rest:90,  inc:2.5},
+      {n:"Farmer's Carry",         s:3, lo:20, hi:45, rest:90,  inc:2.5, tm:true}
     ]},
     UB:{ name:"Upper B", short:"Upper B", light:false, base:"UB", ex:[
       {n:"Weighted Pull-up",       s:3, lo:6,  hi:8,  rest:180, inc:2.5},
@@ -230,7 +231,7 @@ PROGRAMS.f47 = {
       {n:"Weighted Dips",          s:3, lo:8,  hi:10, rest:120, inc:2.5},
       {n:"Cable Lateral Raise",    s:3, lo:12, hi:15, rest:90,  inc:2.5},
       {n:"Reverse Fly",            s:2, lo:12, hi:15, rest:90,  inc:2.5},
-      {n:"Preacher Curl",          s:2, lo:10, hi:12, rest:90,  inc:2.5}
+      {n:"Incline DB Curl",        s:2, lo:10, hi:12, rest:90,  inc:2}
     ]},
     LB:{ name:"Lower B", short:"Lower B", light:false, base:"LB", ex:[
       {n:"Smith Romanian Deadlift",s:3, lo:6,  hi:8,  rest:180, inc:2.5},
@@ -238,7 +239,8 @@ PROGRAMS.f47 = {
       {n:"Lying Leg Curl",         s:3, lo:10, hi:12, rest:120, inc:2.5},
       {n:"Shrugs",                 s:3, lo:8,  hi:12, rest:120, inc:2.5},
       {n:"Standing Calf Raise",    s:3, lo:12, hi:15, rest:90,  inc:2.5},
-      {n:"Cable Curl",             s:2, lo:10, hi:12, rest:90,  inc:2.5}
+      {n:"Cable Curl",             s:2, lo:10, hi:12, rest:90,  inc:2.5},
+      {n:"Farmer's Carry",         s:3, lo:20, hi:45, rest:90,  inc:2.5, tm:true}
     ]}
   }
 };
@@ -261,12 +263,17 @@ const NIGGLES = {
       "Machine Row":         "Straps on — takes the forearm flexors out of it entirely.",
       "Cable Row":           "Straps on. Neutral grip.",
       "Shrugs":              "Straps on. This is a grip exercise otherwise.",
-      "Chest Fly":           "Back off the stretch position if the inner elbow talks."
+      "Incline DB Fly":      "Soft elbows, locked in one angle. If the inner elbow talks at the bottom, shorten the range — the stretch is the point, pain isn't.",
+      "Incline DB Curl":     "Neutral (hammer) grip — no supination under load. Stop ~15° short of full extension at the bottom.",
+      "Farmer's Carry":      "This one is the treatment, not the problem. Bare hands, no straps — the grip work is the whole reason it's in here. Stop the set with something left."
     },
     rehab: [
-      "Wrist flexor eccentrics — 3 × 15, light DB, 3-second lowering, help it back up with the other hand.",
-      "Isometric wrist flexion — 5 × 40 s at about half effort. Do these before you train; they blunt the pain.",
-      "Rule of thumb: up to ~4/10 pain during is fine. Worse the next morning means you did too much."
+      "Farmer's carries are now in Lower A and Lower B — 3 sets of 20–45 s, bare hands. That IS the grip rehab.",
+      "Wrist flexor work — 2–3 × 8–15, light DB, controlled. Shorten the range or hold isometrics 30–45 s if full range hurts.",
+      "Pronation — 2–3 × 8–15. Hold a light DB by one end, elbow at your side, rotate palm-down.",
+      "NOT to failure. The protocol is tolerable load repeated often, not maximal effort occasionally.",
+      "Rule of thumb: up to ~4/10 pain during is fine. Worse the next morning means you did too much.",
+      "Expect a minimum of three months. Tendons are slow — that isn't a sign it isn't working."
     ]
   }
 };
@@ -362,7 +369,10 @@ const loadFor=(e1,r)=>e1/(1+r/30);
 function recommend(ex, sess){
   const u=S.settings.unit;
   const prev = lastFor(ex.n, sess.key);
-  if(!prev) return {w:null, reps:ex.lo, why:"First time — find a weight you can own for "+ex.lo+"–"+ex.hi+". Log it honestly; every future target is built off this.", tag:"n"};
+  if(!prev) return {w:null, reps:ex.lo, tag:"n",
+    why: ex.tm
+      ? "First time — pick a weight per hand you could hold for about "+ex.hi+" s with good posture, then only walk for "+ex.lo+" s. Deliberately short of your limit."
+      : "First time — find a weight you can own for "+ex.lo+"–"+ex.hi+". Log it honestly; every future target is built off this."};
   const L = readLast(prev.e);
   if(!L) return {w:null, reps:ex.lo, why:"No scored sets last time — score every set or the engine can't progress you.", tag:"n"};
   const ago = Math.round((new Date(today())-new Date(prev.s.date))/864e5);
@@ -370,18 +380,22 @@ function recommend(ex, sess){
   // Same exercise, different session (e.g. Leg Press 6-8 in Lower A vs 10-12 in Lower B).
   // Convert via estimated 1RM rather than pretending the loads are comparable.
   if(!prev.same){
+    // Estimated-1RM conversion is meaningless for a timed hold - carry the load straight across.
+    if(ex.tm) return {w:L.w, reps:ex.lo, tag:"n",
+      why:`No history for this slot. Same load as ${prev.s.name} (${L.w}${u} per hand), starting at ${ex.lo} s.`};
     const w=round(loadFor(e1rm(L.w,L.reps), ex.lo), ex.inc);
     return {w, reps:ex.lo, tag:"n",
       why:`No history for this slot. Converted from ${prev.s.name} (${L.w}${u} × ${L.reps}, ${ago}d ago) → <b>about ${w}${u}</b> for ${ex.lo}–${ex.hi}. Treat it as a starting guess and score it honestly.`};
   }
 
-  const meta = `Last (${ago}d ago): ${L.w}${u}, best ${L.reps} reps, avg ${L.avg.toFixed(1)}/10 across ${L.n} set${L.n>1?"s":""}.`;
+  const RU = ex.tm ? " s" : " reps";
+  const meta = `Last (${ago}d ago): ${L.w}${u}, best ${L.reps}${RU}, avg ${L.avg.toFixed(1)}/10 across ${L.n} set${L.n>1?"s":""}.`;
   let w=L.w, reps=L.reps, why, tag;
   if(L.gate>=9 && L.reps>=ex.hi){ w=round(L.w+ex.inc,ex.inc); reps=ex.lo;
-    why=`${meta} Owned at the top of the range → <b>add ${ex.inc}${u} → ${w}${u}</b>.`; tag="g"; }
-  else if(L.gate>=9){ reps=Math.min(ex.hi,L.reps+1);
-    why=`${meta} Execution earns it, reps don't yet → <b>hold ${L.w}${u}, chase ${reps}</b>.`; tag="g"; }
-  else if(L.gate===8){ reps=Math.min(ex.hi,L.reps+1);
+    why=`${meta} Owned at the top of the range → <b>add ${ex.inc}${u} → ${w}${u}</b>${ex.tm?" and drop back to "+ex.lo+" s":""}.`; tag="g"; }
+  else if(L.gate>=9){ reps=Math.min(ex.hi,L.reps+(ex.tm?5:1));
+    why=`${meta} Execution earns it, ${ex.tm?"time":"reps"} don't yet → <b>hold ${L.w}${u}, chase ${reps}${RU}</b>.`; tag="g"; }
+  else if(L.gate===8){ reps=Math.min(ex.hi,L.reps+(ex.tm?5:1));
     why=`${meta} Good but not owned → <b>repeat ${L.w}${u}</b> and clean it up.`; tag="b"; }
   else if(L.gate===7){ reps=L.reps;
     why=`${meta} Technique was deteriorating → <b>hold ${L.w}${u}</b> until execution improves.`; tag="a"; }
@@ -668,10 +682,10 @@ function vSession(A){
     const done=ent.sets.every(s=>s.w!=null&&s.r!=null);
     h+=`<div class="ex ${done?"done":""}">
       <div class="exh"><div><div class="exn">${esc(ex.n)}</div>
-        <div class="exm">${ex.s} × ${ex.lo}–${ex.hi} reps · ${ex.rest>=180?"3 min":ex.rest>=120?"2 min":"60–90 s"} rest</div></div>
+        <div class="exm">${ex.s} × ${ex.lo}–${ex.hi} ${ex.tm?"sec":"reps"} · ${ex.rest>=180?"3 min":ex.rest>=120?"2 min":"60–90 s"} rest</div></div>
         ${rec.w!=null?`<div style="text-align:right"><div style="font-weight:800;font-size:19px">${rec.w}<span style="font-size:11px;color:var(--dim)">${S.settings.unit}</span></div>
-        <div class="tiny">target ${rec.reps}</div></div>`:`<span class="pill n">NEW</span>`}</div>
-      <div class="setlbls"><span></span><span>${S.settings.unit}</span><span>Reps</span><span>Score</span><span></span></div>
+        <div class="tiny">target ${rec.reps}${ex.tm?" s":""}</div></div>`:`<span class="pill n">NEW</span>`}</div>
+      <div class="setlbls"><span></span><span>${ex.tm?S.settings.unit+"/hand":S.settings.unit}</span><span>${ex.tm?"Sec":"Reps"}</span><span>Score</span><span></span></div>
       <div class="sets">`;
     ent.sets.forEach((st,si)=>{
       const ok=st.w!=null&&st.r!=null;
